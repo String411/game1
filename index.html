@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>骨骨小人冒险</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { touch-action: manipulation; overscroll-behavior: none; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    color: #fff;
+  }
+  h1 { margin-bottom: 6px; font-size: 18px; text-shadow: 0 2px 8px rgba(0,0,0,.3); text-align:center; }
+  .hud {
+    display: flex; gap: 14px; margin-bottom: 6px; font-size: 12px;
+    flex-wrap: wrap; justify-content: center;
+  }
+  .hud b { color: #ffd86b; font-size: 14px; }
+  .wrap {
+    position: relative;
+    width: min(96vw, 560px);
+    margin: 0 auto;
+  }
+  canvas {
+    background: #87ceeb;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.3);
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .touch-pad {
+    position: absolute;
+    bottom: 14px;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 18px;
+    pointer-events: none;
+  }
+  .touch-group { display: flex; gap: 12px; pointer-events: auto; }
+  .tbtn {
+    width: 62px; height: 62px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.35);
+    backdrop-filter: blur(6px);
+    border: 2px solid rgba(255,255,255,.6);
+    color: #fff;
+    font-size: 26px;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .tbtn:active { background: rgba(255,255,255,.6); }
+  .tbtn.jump { width: 76px; height: 76px; background: rgba(255,180,80,.5); }
+  .tips { font-size: 12px; opacity: .85; margin-top: 10px; text-align: center; line-height: 1.7; }
+  kbd {
+    background: rgba(0,0,0,.3);
+    padding: 2px 6px; border-radius: 4px;
+    font-family: monospace; margin: 0 2px; font-size: 11px;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .touch-pad { display: none; }
+  }
+</style>
+</head>
+<body>
+  <h1>🎮 骨骨小人跳跃冒险</h1>
+  <div class="hud">
+    <span>📍 关卡：<b id="level">1</b>/<b id="levelTotal">6</b></span>
+    <span>⭐ 星星：<b id="score">0</b></span>
+    <span>❤️ 生命：<b id="lives">3</b></span>
+    <span>🏆 总星：<b id="totalStars">0</b></span>
+  </div>
+  <div class="wrap">
+    <canvas id="game" width="900" height="520"></canvas>
+    <div class="touch-pad">
+      <div class="touch-group">
+        <div class="tbtn" id="btnLeft">◀</div>
+        <div class="tbtn" id="btnRight">▶</div>
+      </div>
+      <div class="touch-group">
+        <div class="tbtn jump" id="btnJump">⤒</div>
+      </div>
+    </div>
+  </div>
+  <div class="tips">
+    桌面：<kbd>←</kbd><kbd>→</kbd> 移动 · <kbd>空格</kbd>跳跃<br>
+    手机：屏幕左下方向键 · 右下大按钮跳跃 · 走到 🚩 旗子进入下一关
+  </div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 900, H = 520;
+
+const LEVELS = [
+  //第1关（入门，轻微加难度，新手熟悉操作）
+  {
+    platforms: [
+      { x: 0,   y: 480, w: 200, h: 40 },
+      { x: 250, y: 435, w: 75,  h: 16 },
+      { x: 400, y: 390, w: 75,  h: 16 },
+      { x: 540, y: 345, w: 75,  h: 16 },
+    ],
+    stars: [
+      { x: 285, y: 400 },
+      { x: 435, y: 355 },
+      { x: 575, y: 310 },
+    ],
+    spikes: [
+      { x: 200, y: 468, w: 40, h: 12 },
+    ],
+    spawn: { x: 70, y: 360 },
+    flag: { x: 570, y: 300 },
+  },
+  //第2关（难度小幅上升）
+  {
+    platforms: [
+      { x: 0,   y: 480, w: 200, h: 40 },
+      { x: 240, y: 425, w: 75,  h: 16 },
+      { x: 390, y: 370, w: 75,  h: 16 },
+      { x: 530, y: 315, w: 75,  h: 16 },
+      { x: 660, y: 260, w: 75,  h: 16 },
+    ],
+    stars: [
+      { x: 275, y: 390 },
+      { x: 425, y: 335 },
+      { x: 565, y: 280 },
+      { x: 695, y: 225 },
+    ],
+    spikes: [
+      { x: 200, y: 468, w: 40, h: 12 },
+      { x: 340, y: 468, w: 40, h: 12 },
+      { x: 480, y: 468, w: 40, h: 12 },
+    ],
+    spawn: { x: 70, y: 360 },
+    flag: { x: 690, y: 215 },
+  },
+  //第3关（中等难度，引入高低差变化）
+  {
+    platforms: [
+      { x: 0,   y: 480, w: 200, h: 40 },
+      { x: 230, y: 415, w: 70,  h: 16 },
+      { x: 370, y: 350, w: 70,  h: 16 },
+      { x: 510, y: 390, w: 70,  h: 16 },
+      { x: 640, y: 320, w: 70,  h: 16 },
+      { x: 760, y: 260, w: 70,  h: 16 },
+    ],
+    stars: [
+      { x: 260, y: 380 },
+      { x: 400, y: 315 },
+      { x: 540, y: 355 },
+      { x: 670, y: 285 },
+      { x: 790, y: 225 },
+    ],
+    spikes: [
+      { x: 200, y: 468, w: 40, h: 12 },
+      { x: 330, y: 468, w: 40, h: 12 },
+      { x: 460, y: 468, w: 40, h: 12 },
+      { x: 590, y: 468, w: 40, h: 12 },
+    ],
+    spawn: { x: 70, y: 360 },
+    flag: { x: 790, y: 210 },
+  },
+  //第4关（中高难度，平台变窄，考验精准落点）
+  {
+    platforms: [
+      { x: 0,   y: 480, w: 200, h: 40 },
+      { x: 220, y: 410, w: 65,  h: 16 },
+      { x: 355, y: 345, w: 65,  h: 16 },
+      { x: 485, y: 280, w: 65,  h: 16 },
+      { x: 610, y: 340, w: 65,  h: 16 },
+      { x: 730, y: 270, w: 65,  h: 16 },
+      { x: 840, y: 210, w: 65,  h: 16 },
+    ],
+    stars: [
+      { x: 245, y: 375 },
+      { x: 380, y: 310 },
+      { x: 510, y: 245 },
+      { x: 635, y: 305 },
+      { x: 755, y: 235 },
+      { x: 865, y: 175 },
+    ],
+    spikes: [
+      { x: 200, y: 468, w: 40, h: 12 },
+      { x: 320, y: 468, w: 40, h: 12 },
+      { x: 440, y: 468, w: 40, h: 12 },
+      { x: 560, y: 468, w: 40, h: 12 },
+      { x: 680, y: 468, w: 40, h: 12 },
+    ],
+    spawn: { x: 70, y: 360 },
+    flag: { x: 865, y: 160 },
+  },
+  // ====== 第5关（修复：旗子在屏幕内，路线连续可通关） ======
+{
+  platforms: [
+    { x: 0,   y: 480, w: 200, h: 40 },
+    { x: 230, y: 420, w: 70,  h: 16 },
+    { x: 375, y: 360, w: 70,  h: 16 },
+    { x: 520, y: 300, w: 70,  h: 16 },
+    { x: 660, y: 240, w: 70,  h: 16 },
+    { x: 780, y: 190, w: 70,  h: 16 },
+    { x: 860, y: 190, w: 70,  h: 16 }, //终点平台，控制在画面内
+  ],
+  stars: [
+    { x: 260, y: 385 },
+    { x: 405, y: 325 },
+    { x: 550, y: 265 },
+    { x: 690, y: 205 },
+    { x: 810, y: 155 },
+    { x: 890, y: 155 },
+  ],
+  spikes: [
+    { x: 200, y: 468, w: 40, h: 12 },
+    { x: 340, y: 468, w: 40, h: 12 },
+    { x: 480, y: 468, w: 40, h: 12 },
+    { x: 620, y: 468, w: 40, h: 12 },
+    { x: 740, y: 468, w: 40, h: 12 },
+    { x: 840, y: 468, w: 40, h: 12 },
+  ],
+  spawn: { x: 70, y: 360 },
+  flag: { x: 890, y: 140 }, //旗子在终点平台上，屏幕可见
+},
+
+// ====== 第6关（最终关修复，最后一跳可到达，旗子在画面内） ======
+{
+  platforms: [
+    { x: 0,   y: 480, w: 200, h: 40 },
+    { x: 225, y: 415, w: 65,  h: 16 },
+    { x: 365, y: 350, w: 65,  h: 16 },
+    { x: 505, y: 285, w: 65,  h: 16 },
+    { x: 640, y: 220, w: 65,  h: 16 },
+    { x: 755, y: 170, w: 65,  h: 16 }, //倒数第二个平台左移
+    { x: 840, y: 170, w: 65,  h: 16 }, //终点平台，和前平台同高，距离缩短
+  ],
+  stars: [
+    { x: 255, y: 380 },
+    { x: 400, y: 315 },
+    { x: 540, y: 250 },
+    { x: 670, y: 185 },
+    { x: 785, y: 135 },
+    { x: 870, y: 135 },
+  ],
+  spikes: [
+    { x: 200, y: 468, w: 40, h: 12 },
+    { x: 330, y: 468, w: 40, h: 12 },
+    { x: 460, y: 468, w: 40, h: 12 },
+    { x: 590, y: 468, w: 40, h: 12 },
+    { x: 710, y: 468, w: 40, h: 12 },
+    { x: 820, y: 468, w: 40, h: 12 },
+  ],
+  spawn: { x: 70, y: 360 },
+  flag: { x: 870, y: 120 }, //旗子放在画面右侧，肉眼可见
+},
+
+];
+
+
+const state = {
+  level: 0, score: 0, totalStars: 0, lives: 3,
+  gameOver: false, levelClear: false, allClear: false,
+};
+
+const player = {
+  x: 120, y: 300, w: 100, h: 120,
+  vx: 0, vy: 0, speed: 4, jumpPower: -17,
+  grounded: false, facing: 1,
+  walkFrames: [], jumpFrame: null,
+  animFrame: 0, animTimer: 0,
+  defaultColor: '#ff6b6b',
+};
+const GRAVITY = 0.9;
+const keys = {};
+let platforms = [], stars = [], spikes = [], flag = {};
+
+const walkImgSrc = "walk.png";
+const jumpImgSrc = "jump.gif";
+function preloadImages() {
+  const walkImg = new Image();
+  walkImg.src = walkImgSrc;
+  walkImg.onload = () => { player.walkFrames.push(walkImg); };
+  const jumpImg = new Image();
+  jumpImg.src = jumpImgSrc;
+  jumpImg.onload = () => { player.jumpFrame = jumpImg; };
+}
+
+function loadLevel(idx) {
+  const lv = LEVELS[idx];
+  platforms = lv.platforms.map(p => ({...p}));
+  stars = lv.stars.map(s => ({...s, got:false, r:11}));
+  spikes = lv.spikes.map(s => ({...s}));
+  flag = {...lv.flag, w: 28, h: 50};
+  player.x = lv.spawn.x;
+  player.y = lv.spawn.y;
+  player.vx = 0; player.vy = 0;
+  state.score = 0;
+  state.levelClear = false;
+  updateHUD();
+}
+function restartLevel() {
+  state.gameOver = false;
+  state.levelClear = false;
+  state.lives = 3;
+  loadLevel(state.level);
+}
+function updateHUD() {
+  document.getElementById('level').textContent = state.level + 1;
+  document.getElementById('levelTotal').textContent = LEVELS.length;
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('lives').textContent = state.lives;
+  document.getElementById('totalStars').textContent = state.totalStars;
+}
+
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (['ArrowUp','Space','KeyW','ArrowLeft','ArrowRight','KeyA','KeyD'].includes(e.code)) e.preventDefault();
+  if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && player.grounded) {
+    player.vy = player.jumpPower;
+    player.grounded = false;
+  }
+  if ((state.gameOver || state.levelClear || state.allClear) && (e.code === 'Space' || e.code === 'Enter')) {
+    advanceOrRestart();
+  }
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+function bindTouch(btnId, code) {
+  const el = document.getElementById(btnId);
+  const start = (e) => { e.preventDefault(); keys[code] = true; };
+  const end   = (e) => { e.preventDefault(); keys[code] = false; };
+  el.addEventListener('touchstart', start, {passive:false});
+  el.addEventListener('touchend', end);
+  el.addEventListener('touchcancel', end);
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', end);
+  el.addEventListener('mouseleave', end);
+}
+bindTouch('btnLeft',  'ArrowLeft');
+bindTouch('btnRight', 'ArrowRight');
+const jumpBtn = document.getElementById('btnJump');
+const jumpStart = (e) => {
+  e.preventDefault();
+  if (player.grounded) { player.vy = player.jumpPower; player.grounded = false; }
+};
+jumpBtn.addEventListener('touchstart', jumpStart, {passive:false});
+jumpBtn.addEventListener('mousedown', jumpStart);
+
+function advanceOrRestart() {
+  if (state.allClear) {
+    state.allClear = false; state.level = 0; state.totalStars = 0;
+    restartLevel();
+  } else if (state.levelClear) {
+    state.level++;
+    restartLevel();
+  } else if (state.gameOver) {
+    restartLevel();
+  }
+}
+
+function rectHit(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function update() {
+  if (state.gameOver || state.levelClear || state.allClear) return;
+  player.vx = 0;
+  if (keys['ArrowLeft'] || keys['KeyA'])  { player.vx = -player.speed; player.facing = -1; }
+  if (keys['ArrowRight'] || keys['KeyD']) { player.vx =  player.speed; player.facing =  1; }
+  player.vy += GRAVITY;
+  player.x += player.vx;
+  player.y += player.vy;
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.w > W) player.x = W - player.w;
+  player.grounded = false;
+  for (const p of platforms) {
+    if (rectHit(player, p)) {
+      if (player.vy > 0 && player.y + player.h - player.vy <= p.y + 2) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.grounded = true;
+      }
+    }
+  }
+  if (player.y > H + 50) { loseLife(); return; }
+  for (const s of spikes) {
+    if (rectHit(player, s)) { loseLife(); return; }
+  }
+  for (const st of stars) {
+    if (st.got) continue;
+    const dx = player.x + player.w/2 - st.x;
+    const dy = player.y + player.h/2 - st.y;
+    if (Math.hypot(dx, dy) < st.r + player.w/2) {
+      st.got = true; state.score++; state.totalStars++; updateHUD();
+    }
+  }
+  if (rectHit(player, flag)) {
+    if (state.level === LEVELS.length - 1) state.allClear = true;
+    else state.levelClear = true;
+  }
+  if (!player.grounded) {
+  } else if (Math.abs(player.vx) > 0.1) {
+    player.animTimer++;
+    if (player.animTimer > 10) {
+      player.animTimer = 0;
+      player.animFrame = (player.animFrame + 1) % Math.max(1, player.walkFrames.length);
+    }
+  } else {
+    player.animFrame = 0; player.animTimer = 0;
+  }
+}
+
+function loseLife() {
+  state.lives--;
+  updateHUD();
+  if (state.lives <= 0) {
+    state.gameOver = true;
+  } else {
+    const lv = LEVELS[state.level];
+    player.x = lv.spawn.x; player.y = lv.spawn.y;
+    player.vx = 0; player.vy = 0;
+  }
+}
+
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#87ceeb');
+  g.addColorStop(1, '#e0f6ff');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,.8)';
+  drawCloud(120, 90, 1);
+  drawCloud(500, 60, 0.8);
+  drawCloud(780, 120, 1.1);
+  ctx.fillStyle = '#a8d5a2';
+  ctx.beginPath(); ctx.moveTo(0,480); ctx.lineTo(150,360); ctx.lineTo(300,480); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(500,480); ctx.lineTo(680,340); ctx.lineTo(860,480); ctx.closePath(); ctx.fill();
+}
+function drawCloud(x, y, s) {
+  ctx.beginPath();
+  ctx.arc(x, y, 20*s, 0, Math.PI*2);
+  ctx.arc(x+22*s, y-8*s, 18*s, 0, Math.PI*2);
+  ctx.arc(x+44*s, y, 20*s, 0, Math.PI*2);
+  ctx.fill();
+}
+function drawPlatforms() {
+  for (const p of platforms) {
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = '#4caf50';
+    ctx.fillRect(p.x, p.y, p.w, 5);
+  }
+}
+function drawSpikes() {
+  ctx.fillStyle = '#444';
+  for (const s of spikes) {
+    const n = Math.floor(s.w / 10);
+    for (let i = 0; i < n; i++) {
+      ctx.beginPath();
+      ctx.moveTo(s.x + i*10, s.y + s.h);
+      ctx.lineTo(s.x + i*10 + 5, s.y);
+      ctx.lineTo(s.x + i*10 + 10, s.y + s.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+function drawStars() {
+  for (const st of stars) {
+    if (st.got) continue;
+    const t = Date.now() / 300;
+    const r = st.r + Math.sin(t + st.x) * 1.5;
+    ctx.save();
+    ctx.translate(st.x, st.y);
+    ctx.rotate(t * 0.5);
+    ctx.fillStyle = '#ffd700';
+    ctx.strokeStyle = '#e6a700';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * 4 * Math.PI) / 5 - Math.PI/2;
+      const px = Math.cos(angle) * r, py = Math.sin(angle) * r;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawFlag() {
+  ctx.fillStyle = '#555';
+  ctx.fillRect(flag.x + flag.w/2 - 2, flag.y - flag.h, 4, flag.h);
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.moveTo(flag.x + flag.w/2 + 2, flag.y - flag.h);
+  ctx.lineTo(flag.x + flag.w/2 + 24, flag.y - flag.h + 10);
+  ctx.lineTo(flag.x + flag.w/2 + 2, flag.y - flag.h + 20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#888';
+  ctx.beginPath();
+  ctx.arc(flag.x + flag.w/2, flag.y, 8, 0, Math.PI*2);
+  ctx.fill();
+}
+function drawPlayer() {
+  let imgToDraw = null;
+  if (!player.grounded && player.jumpFrame) {
+    imgToDraw = player.jumpFrame;
+  } else if (player.walkFrames.length > 0) {
+    imgToDraw = player.walkFrames[player.animFrame % player.walkFrames.length];
+  }
+  ctx.save();
+  if (player.facing === -1) {
+    ctx.translate(player.x + player.w, player.y);
+    ctx.scale(-1, 1);
+  } else {
+    ctx.translate(player.x, player.y);
+  }
+  if (imgToDraw) {
+    const ratio = Math.min(player.w / imgToDraw.width, player.h / imgToDraw.height);
+    const dw = imgToDraw.width * ratio;
+    const dh = imgToDraw.height * ratio;
+    const drawX = (player.w - dw) / 2;
+    const drawY = player.h - dh + 8;
+    ctx.drawImage(imgToDraw, drawX, drawY, dw, dh);
+  } else {
+    ctx.fillStyle = player.defaultColor;
+    roundRect(0, 0, player.w, player.h, 8);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(player.w*0.35, player.h*0.35, 4, 0, Math.PI*2);
+    ctx.arc(player.w*0.65, player.h*0.35, 4, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(player.w*0.35, player.h*0.35, 2, 0, Math.PI*2);
+    ctx.arc(player.w*0.65, player.h*0.35, 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+function drawOverlay() {
+  if (state.gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('游戏结束', W/2, H/2 - 20);
+    ctx.font = '20px sans-serif';
+    ctx.fillText(`本关收集星星：${state.score}`, W/2, H/2 + 20);
+    ctx.font = '17px sans-serif';
+    ctx.fillText('按 空格 重新开始', W/2, H/2 + 55);
+  } else if (state.levelClear) {
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffd86b';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 46px sans-serif';
+    ctx.fillText('🎉 关卡完成！', W/2, H/2 - 20);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.fillText(`本关星星：${state.score} 颗`, W/2, H/2 + 20);
+    ctx.font = '17px sans-serif';
+    ctx.fillText('按 空格 进入下一关', W/2, H/2 + 55);
+  } else if (state.allClear) {
+    ctx.fillStyle = 'rgba(0,0,0,.65)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffd86b';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.fillText('🏆 全部通关！', W/2, H/2 - 30);
+    ctx.fillStyle = '#fff';
+    ctx.font = '22px sans-serif';
+    ctx.fillText(`总共收集星星：${state.totalStars} 颗`, W/2, H/2 + 15);
+    ctx.font = '17px sans-serif';
+    ctx.fillText('按 空格 重新开始游戏', W/2, H/2 + 55);
+  }
+}
+function loop() {
+  update();
+  drawBackground();
+  drawPlatforms();
+  drawSpikes();
+  drawStars();
+  drawFlag();
+  drawPlayer();
+  drawOverlay();
+  requestAnimationFrame(loop);
+}
+
+preloadImages();
+loadLevel(0);
+loop();
+</script>
+</body>
+</html>
